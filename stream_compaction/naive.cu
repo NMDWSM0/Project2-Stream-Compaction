@@ -11,7 +11,6 @@ namespace StreamCompaction {
             static PerformanceTimer timer;
             return timer;
         }
-        // TODO: __global__
 
         __global__ void kernNaiveScan(int N, int* odata, const int* idata, int pow2d) {
             int index = threadIdx.x + (blockIdx.x * blockDim.x);
@@ -32,8 +31,8 @@ namespace StreamCompaction {
         void scan(int n, int *odata, const int *idata) {
             // compute dims
             int depth = ilog2ceil(n);
-            int N = pow(2, depth);  // set N the smallest power of 2
-            dim3 fullBlocksPerGrid((N + blockSize - 1) / blockSize);
+            int N = 1 << depth;  // set N the smallest power of 2
+            int fullBlocksPerGrid = (N + blockSize - 1) / blockSize;
 
             // memory allocation
             int *dev_dataA, * dev_dataB;
@@ -54,7 +53,7 @@ namespace StreamCompaction {
             for (int i = 0; i < depth; ++i) {
                 inDataPtr = (curBuffer == 0) ? dev_dataA : dev_dataB;
                 outDataPtr = (curBuffer == 0) ? dev_dataB : dev_dataA;
-                kernNaiveScan<<<fullBlocksPerGrid, blockSize>>>(N, outDataPtr, inDataPtr, (1<<i));
+                kernNaiveScan<<<fullBlocksPerGrid, blockSize>>>(N, outDataPtr, inDataPtr, (1 << i));
                 curBuffer = (curBuffer + 1) % 2;
             }
             timer().endGpuTimer();
