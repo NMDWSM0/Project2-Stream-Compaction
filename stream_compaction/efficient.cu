@@ -81,14 +81,6 @@ namespace StreamCompaction {
             odata[index] += scanned_blocksumdata[blockIdx.x];
         }
 
-        __global__ void kernAdd(int N, int* odata, const int* idata) {
-            int index = threadIdx.x + (blockIdx.x * blockDim.x);
-            if (index >= N) {
-                return;
-            }
-            odata[index] += idata[index];
-        }
-
         void recursiveExclusiveScan(int N, const std::vector<int*>& odatas, int bufferlvl) {
             if (N <= blockSize) 
             {
@@ -124,24 +116,19 @@ namespace StreamCompaction {
                 dev_datas.push_back(dev_data);
                 bufferSize /= blockSize;
             } while (bufferSize > 1);
-            // copy idata to device again
-            int *dev_idata;
-            cudaMalloc(&dev_idata, n * sizeof(int));
 
             // copy data to device
             cudaMemcpy(dev_datas[0], idata, n * sizeof(int), cudaMemcpyHostToDevice);
-            cudaMemcpy(dev_idata, idata, n * sizeof(int), cudaMemcpyHostToDevice);
 
             // start kernel
             timer().startGpuTimer();
             // do exclusive scan
             recursiveExclusiveScan(N, dev_datas, 0);
-            // convert to inclusive
-            kernAdd<<<fullBlocksPerGrid, blockSize>>>(n, dev_datas[0], dev_idata);
             timer().endGpuTimer();
 
             // copy back data
-            cudaMemcpy(odata, dev_datas[0], n * sizeof(int), cudaMemcpyDeviceToHost);
+            cudaMemcpy(odata, dev_datas[0] + 1, (n - 1) * sizeof(int), cudaMemcpyDeviceToHost);
+            odata[n - 1] = odata[n - 2] + idata[n - 1];  // make inclusive
 
             // free memory
             for (auto dev_data : dev_datas) {
