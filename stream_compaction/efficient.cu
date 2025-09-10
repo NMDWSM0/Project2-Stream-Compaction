@@ -4,6 +4,8 @@
 #include "common.h"
 #include "efficient.h"
 
+#define blockSize 512
+
 namespace StreamCompaction {
     namespace Efficient {
         using StreamCompaction::Common::PerformanceTimer;
@@ -14,32 +16,38 @@ namespace StreamCompaction {
         }
 
         __global__ void kernExclusiveScanEachBlock(int N, int* odata, int* blocksumdata) {
-            int index = threadIdx.x + (blockIdx.x * blockDim.x);
+            const int globalbase = (blockIdx.x * blockDim.x);
+            const int tid = threadIdx.x;
+            const int gid = tid + globalbase;
             constexpr int maxdepth = ilog2ceil(blockSize);
 
             // upsweep
             for (int d = 0; d < maxdepth; ++d) {
                 const int offset = 1 << d;
-                if ((threadIdx.x + 1) % (2 * offset) == 0) {
-                    odata[index] += odata[index - offset];
+                const int twooffset = offset << 1;
+                if (tid < blockSize / twooffset) {
+                    const int gid_t = globalbase + (tid + 1) * twooffset - 1;
+                    odata[gid_t] += odata[gid_t - offset];
                 }
                 __syncthreads();
             }
 
             // save the last data(total sum of a block) 
             if (threadIdx.x == blockSize - 1) {
-                blocksumdata[blockIdx.x] = odata[index];
-                odata[index] = 0; // and set the last data to 0
+                blocksumdata[blockIdx.x] = odata[gid];
+                odata[gid] = 0; // and set the last data to 0
             }
             __syncthreads();
 
             // downsweep
             for (int d = maxdepth - 1; d >= 0; --d) {
                 const int offset = 1 << d;
-                if ((threadIdx.x + 1) % (2 * offset) == 0) {
-                    int temp = odata[index - offset];
-                    odata[index - offset] = odata[index];
-                    odata[index] += temp;
+                const int twooffset = offset << 1;
+                if (tid < blockSize / twooffset) {
+                    const int gid_t = globalbase + (tid + 1) * twooffset - 1;
+                    int temp = odata[gid_t - offset];
+                    odata[gid_t - offset] = odata[gid_t];
+                    odata[gid_t] += temp;
                 }
                 __syncthreads();
             }
@@ -52,8 +60,10 @@ namespace StreamCompaction {
             // upsweep
             for (int d = 0; d < maxdepth; ++d) {
                 const int offset = 1 << d;
-                if ((threadIdx.x + 1) % (2 * offset) == 0) {
-                    odata[index] += odata[index - offset];
+                const int twooffset = offset << 1;
+                if (index < blockSize / twooffset) {
+                    const int gid_t = (index + 1) * twooffset - 1;
+                    odata[gid_t] += odata[gid_t - offset];
                 }
                 __syncthreads();
             }
@@ -67,10 +77,12 @@ namespace StreamCompaction {
             // downsweep
             for (int d = maxdepth - 1; d >= 0; --d) {
                 const int offset = 1 << d;
-                if ((threadIdx.x + 1) % (2 * offset) == 0) {
-                    int temp = odata[index - offset];
-                    odata[index - offset] = odata[index];
-                    odata[index] += temp;
+                const int twooffset = offset << 1;
+                if (index < blockSize / twooffset) {
+                    const int gid_t = (index + 1) * twooffset - 1;
+                    int temp = odata[gid_t - offset];
+                    odata[gid_t - offset] = odata[gid_t];
+                    odata[gid_t] += temp;
                 }
                 __syncthreads();
             }
@@ -295,8 +307,10 @@ namespace StreamCompaction {
             // upsweep
             for (int d = 0; d < maxdepth; ++d) {
                 const int offset = 1 << d;
-                if ((tid + 1) % (2 * offset) == 0) {
-                    shared_odata[tid] += shared_odata[tid - offset];
+                const int twooffset = offset << 1;
+                if (tid < blockSize / twooffset) {
+                    const int tid_t = (tid + 1) * twooffset - 1;
+                    shared_odata[tid_t] += shared_odata[tid_t - offset];
                 }
                 __syncthreads();
             }
@@ -311,10 +325,12 @@ namespace StreamCompaction {
             // downsweep
             for (int d = maxdepth - 1; d >= 0; --d) {
                 const int offset = 1 << d;
-                if ((tid + 1) % (2 * offset) == 0) {
-                    int temp = shared_odata[tid - offset];
-                    shared_odata[tid - offset] = shared_odata[tid];
-                    shared_odata[tid] += temp;
+                const int twooffset = offset << 1;
+                if (tid < blockSize / twooffset) {
+                    const int tid_t = (tid + 1) * twooffset - 1;
+                    int temp = shared_odata[tid_t - offset];
+                    shared_odata[tid_t - offset] = shared_odata[tid_t];
+                    shared_odata[tid_t] += temp;
                 }
                 __syncthreads();
             }
@@ -413,18 +429,19 @@ namespace StreamCompaction {
             extern __shared__ int shared_odata[];
 
             const int tid = threadIdx.x;
-            int index = threadIdx.x;
             int maxdepth = ilog2ceil(N);
 
             // load into sharedmemory
-            shared_odata[tid] = odata[index];
+            shared_odata[tid] = odata[tid];
             __syncthreads();
 
             // upsweep
             for (int d = 0; d < maxdepth; ++d) {
                 const int offset = 1 << d;
-                if ((tid + 1) % (2 * offset) == 0) {
-                    shared_odata[tid] += shared_odata[tid - offset];
+                const int twooffset = offset << 1;
+                if (tid < blockSize / twooffset) {
+                    const int tid_t = (tid + 1) * twooffset - 1;
+                    shared_odata[tid_t] += shared_odata[tid_t - offset];
                 }
                 __syncthreads();
             }
@@ -438,16 +455,18 @@ namespace StreamCompaction {
             // downsweep
             for (int d = maxdepth - 1; d >= 0; --d) {
                 const int offset = 1 << d;
-                if ((tid + 1) % (2 * offset) == 0) {
-                    int temp = shared_odata[tid - offset];
-                    shared_odata[tid - offset] = shared_odata[tid];
-                    shared_odata[tid] += temp;
+                const int twooffset = offset << 1;
+                if (tid < blockSize / twooffset) {
+                    const int tid_t = (tid + 1) * twooffset - 1;
+                    int temp = shared_odata[tid_t - offset];
+                    shared_odata[tid_t - offset] = shared_odata[tid_t];
+                    shared_odata[tid_t] += temp;
                 }
                 __syncthreads();
             }
 
             // write back to global memory
-            odata[index] = shared_odata[tid];
+            odata[tid] = shared_odata[tid];
         }
 
         __global__ void kernAddBlockSum(int N, int* odata, int* scanned_blocksumdata) {

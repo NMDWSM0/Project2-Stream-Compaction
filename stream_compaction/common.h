@@ -15,8 +15,6 @@
 
 #define GET_BIT(num, k) (((num) >> (k)) & 1)
 
-#define blockSize 512
-
 /**
  * Check for CUDA errors; print and exit if there was a problem.
  */

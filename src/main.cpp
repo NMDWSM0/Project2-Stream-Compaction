@@ -20,6 +20,8 @@ int *b = new int[SIZE];
 int *c = new int[SIZE];
 int *d = new int[SIZE];
 
+#define ONLY_EFFECTIVE_SCAN 1
+
 int main(int argc, char* argv[]) {
     // Scan tests
 
@@ -48,6 +50,7 @@ int main(int argc, char* argv[]) {
     printArray(NPOT, c, true);
     printCmpResult(NPOT, b, c);
 
+#if !ONLY_EFFECTIVE_SCAN
     zeroArray(SIZE, c);
     printDesc("naive scan, power-of-two");
     StreamCompaction::Naive::scan(SIZE, c, a);
@@ -67,6 +70,7 @@ int main(int argc, char* argv[]) {
     printElapsedTime(StreamCompaction::Naive::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
     //printArray(SIZE, c, true);
     printCmpResult(NPOT, b, c);
+#endif // !ONLY_EFFECTIVE_SCAN
 
     zeroArray(SIZE, c);
     printDesc("work-efficient scan, power-of-two");
@@ -110,6 +114,7 @@ int main(int argc, char* argv[]) {
     //printArray(NPOT, c, true);
     printCmpResult(NPOT, b, c);
 
+#if !ONLY_EFFECTIVE_SCAN
     printf("\n");
     printf("*****************************\n");
     printf("** STREAM COMPACTION TESTS **\n");
@@ -224,6 +229,7 @@ int main(int argc, char* argv[]) {
     printElapsedTime(StreamCompaction::EfficientSharedMem::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
     //printArray(NPOT, c, true);
     printCmpResult(NPOT, d, c);
+#endif // !ONLY_EFFECTIVE_SCAN
 
     system("pause"); // stop Win32 console from closing on exit
     delete[] a;
