@@ -45,6 +45,7 @@ namespace StreamCompaction {
             cudaMemset(dev_dataA, 0, N * sizeof(int));
             cudaMemset(dev_dataB, 0, N * sizeof(int));
             cudaMemcpy(dev_dataA, idata, n * sizeof(int), cudaMemcpyHostToDevice);
+            cudaDeviceSynchronize();
 
             // start kernel
             timer().startGpuTimer();

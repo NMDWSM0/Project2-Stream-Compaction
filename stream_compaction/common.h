@@ -13,7 +13,9 @@
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 
-#define blockSize 128
+#define GET_BIT(num, k) (((num) >> (k)) & 1)
+
+#define blockSize 512
 
 /**
  * Check for CUDA errors; print and exit if there was a problem.
@@ -38,6 +40,12 @@ namespace StreamCompaction {
 
         __global__ void kernScatter(int n, int *odata,
                 const int *idata, const int *bools, const int *indices);
+
+        __global__ void kernMapToInverseBooleanDigit(int n, int* bools, const int* idata, int digit);
+
+        __global__ void kernComputeTData(int n, int* tdata, const int* fdata, int totalFalses);
+
+        __global__ void kernWriteRadixSort(int n, int* odata, const int* idata, const int* fdata, const int* tdata, int digit);
 
         /**
         * This class is used for timing the performance
