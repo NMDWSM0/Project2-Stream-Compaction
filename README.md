@@ -35,6 +35,7 @@ Just using thrust::exclusive_scan API is OK. (note that thrust is very slow in D
 ### 5. Why is My GPU Approach So Slow? (Extra Credit)
 
 In my implementation, I use a complete kernel which can compute the whole process of scan within each block, so there's no such problems about thread numbers and number of blocks, the performance of Efficient method is faster than naive approach and CPU if there's enough data (about 65k, below that all GPU approach even thrust is slower than CPU).
+For the question asked in this part, I think it's not let a thread handling the data just equal to it's `tid`; instead we should handle the data of `(tid + 1) * twooffset - 1`, so we can quit half of the warps at each level, getting better performance.
 
 ### 6. Extra Credit
 
@@ -52,6 +53,64 @@ In my implementation, I tried three different types of algorithm about shared me
 -   The third on is implementing naive method at lower levels -- that is for each warp, and do a scan for the sum of each warp and add them later to complete the whole scan for the block. In this implementation, `__shfl_up_sync()` is used to get the value of neighbor threads (within each warp) and sync them much faster than `__syncthreads()`, and suprisingly, this one's performance is the best among all my implementations.
 
 ## Performance Analysis
+
+### 1. Blocksize
+
+For the naive implementation, the best blocksize is 256;  
+And for Efficient implementation, the best blocksize is 512.
+
+### 2. Time Cost Comparison
+
+This is a picture of time cost for all methods of scan, each method is using its best blocksize, and array size goes from 2^20 to 2^27.
+![](img/data/time_withCPU.png)
+
+Since the time cost of CPU and Naive method is too high so I include another picture without them to show better for Effective methods.
+![](img/data/time_withoutCPU.png)
+
+### 3. Analysis of Time Cost
+
+All the implementation's time cost grows when the arraysize goes up. And except for the thrust implementation, the grow speed is linear. But for thrust, the grow speed is lower than linear, so we can see that thrust performs worse than our implementation when arraysize < 2^24, but it performs better after arraysize > 2^25.
+
+#### 3.1 Naive Method
+
+For the naive method, we can see that the compute pipelines are under utilization
+![](img/data/naive_bottleneck1.png)
+But the memory throughput is around 87%, which means that this kernel is limited by load/stores. More specifically, the chart shows that it's the load/store of global memory.
+![](img/data/naive_bottleneck2.png)
+And for the whole naive method, we need 26 kernels, each of them needs at least 1 LDG, 1 STG, so in total there will be lots of global memory load/store overhead.
+
+#### 3.2 Efficient Method
+
+For the efficient method, we reduce the number of add and swap operations, and in total the memory load/store counts also decreases a lot, but there's still lot's of global memory load/store, which is more bound than compute.
+![](img/data/efficient_bottleneck.png)
+But because we are doing scan within each block, cache hit rate is really high so most load stalls for only L1/TEX cache load cycles rather than global (**Note that this is important**)
+
+#### 3.3 Thrust Method
+
+We don't know the detail implementation of thrust, but we can see from the Nsight that there's only 3 kernel dispatches:  
+![](img/data/thrust.png)
+The first kernel `static_kernel` only has memory write, and look at the block size it's 2 element per thread.  
+![](img/data/thrust2.png)
+The second kernel `DeviceScanInitKernel` is a relative small kernel, and it costs little time.  
+The third kernel `DeviceScanKernel`, I **think** that this is the true kernel of doing scan. And look at that strange block number, I **think** that it's doing all the scans (both within block and the scan of blocksum) using the same kernel and dispatches them in one call. I don't know how this can be achieved but there's no other ways if there's no extra kernel to add back blocksum scanned result.  
+And, I also **think, that thrust is not using the upsweep-downsweep workflow**, because when we look at it's memory graph, there's very less memory access (both global and shared), and it's very similar to my third shared memory implementation using `__shfl_up_sync()` which can access neighbor threads' value directly through registers, so this can cut down really most of the memory access.
+![](img/data/thrust3.png)
+
+### 4. Analysis towards Shared Memory
+
+Looking back to what I mentioned before, the first implemetation, which is **easily replacing all global read/write with shared read/write**, has a bad performance.  
+This is because:
+
+1. this kernel is still actually a **memory bound** kernel, not compute, so lessen the # of adds and swaps has little impact on performance. In contrast, if there's less memory access, the kernel will be faster obviously. To validate this, compare the time cost of my second implementation using shared memory, in this implemetation we use naive within each block, so there's less memory access (regardless of global or shared, the total access number is less than efficient method) than upsweep-downsweep, and it's better than the effective.
+   ![](img/data/shared2.png)
+
+2. Actually, the effective method is utilizing the L1/TEX cache very most, and in Ampere/Ada Lovelace, shared memory is the same physical memory of user managed shared memory:
+   ![](img/data/shared1.png)
+   So the 92.5% hit rate of L1/TEX cache means introducing sharedmem in this way give us small improvement, but introducing more memory accessing (from L1 cache to shared, which is useless) and `__syncthreads()`, which make this intuitive implementation slow. Below is the memory graph of that method:
+   ![](img/data/shared1_1.png)
+
+3. So to reduce the number of every type of memory access, the third implementation uses `__shfl_up_sync()` avoid most global and shared memory access, so it's really fast then.
+   ![](img/data/shared3.png)
 
 ## Output
 

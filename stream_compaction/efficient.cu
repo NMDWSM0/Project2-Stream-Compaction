@@ -61,7 +61,7 @@ namespace StreamCompaction {
             for (int d = 0; d < maxdepth; ++d) {
                 const int offset = 1 << d;
                 const int twooffset = offset << 1;
-                if (index < blockSize / twooffset) {
+                if (index < N / twooffset) {
                     const int gid_t = (index + 1) * twooffset - 1;
                     odata[gid_t] += odata[gid_t - offset];
                 }
@@ -78,7 +78,7 @@ namespace StreamCompaction {
             for (int d = maxdepth - 1; d >= 0; --d) {
                 const int offset = 1 << d;
                 const int twooffset = offset << 1;
-                if (index < blockSize / twooffset) {
+                if (index < N / twooffset) {
                     const int gid_t = (index + 1) * twooffset - 1;
                     int temp = odata[gid_t - offset];
                     odata[gid_t - offset] = odata[gid_t];
@@ -439,7 +439,7 @@ namespace StreamCompaction {
             for (int d = 0; d < maxdepth; ++d) {
                 const int offset = 1 << d;
                 const int twooffset = offset << 1;
-                if (tid < blockSize / twooffset) {
+                if (tid < N / twooffset) {
                     const int tid_t = (tid + 1) * twooffset - 1;
                     shared_odata[tid_t] += shared_odata[tid_t - offset];
                 }
@@ -456,7 +456,7 @@ namespace StreamCompaction {
             for (int d = maxdepth - 1; d >= 0; --d) {
                 const int offset = 1 << d;
                 const int twooffset = offset << 1;
-                if (tid < blockSize / twooffset) {
+                if (tid < N / twooffset) {
                     const int tid_t = (tid + 1) * twooffset - 1;
                     int temp = shared_odata[tid_t - offset];
                     shared_odata[tid_t - offset] = shared_odata[tid_t];

@@ -6,7 +6,10 @@
  * @copyright University of Pennsylvania
  */
 
-#include <cstdio>
+#include <iostream>
+#include <fstream>
+#include <memory>
+#include <sstream>
 #include <stream_compaction/cpu.h>
 #include <stream_compaction/naive.h>
 #include <stream_compaction/efficient.h>
@@ -21,6 +24,7 @@ int *c = new int[SIZE];
 int *d = new int[SIZE];
 
 #define ONLY_EFFECTIVE_SCAN 1
+#define PROFILE_LOGS 0
 
 int main(int argc, char* argv[]) {
     // Scan tests
@@ -50,7 +54,7 @@ int main(int argc, char* argv[]) {
     printArray(NPOT, c, true);
     printCmpResult(NPOT, b, c);
 
-#if !ONLY_EFFECTIVE_SCAN
+//#if !ONLY_EFFECTIVE_SCAN
     zeroArray(SIZE, c);
     printDesc("naive scan, power-of-two");
     StreamCompaction::Naive::scan(SIZE, c, a);
@@ -70,7 +74,7 @@ int main(int argc, char* argv[]) {
     printElapsedTime(StreamCompaction::Naive::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
     //printArray(SIZE, c, true);
     printCmpResult(NPOT, b, c);
-#endif // !ONLY_EFFECTIVE_SCAN
+//#endif // !ONLY_EFFECTIVE_SCAN
 
     zeroArray(SIZE, c);
     printDesc("work-efficient scan, power-of-two");
@@ -113,6 +117,18 @@ int main(int argc, char* argv[]) {
     printElapsedTime(StreamCompaction::Thrust::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
     //printArray(NPOT, c, true);
     printCmpResult(NPOT, b, c);
+
+#if PROFILE_LOGS
+    std::ofstream file("../data/time.txt", std::ios::out | std::ios::app);
+    file << ilog2ceil(SIZE);
+    file << ", " << StreamCompaction::CPU::timer().getCpuElapsedTimeForPreviousOperation();
+    file << ", " << StreamCompaction::Naive::timer().getGpuElapsedTimeForPreviousOperation();
+    file << ", " << StreamCompaction::Efficient::timer().getGpuElapsedTimeForPreviousOperation();
+    file << ", " << StreamCompaction::EfficientSharedMem::timer().getGpuElapsedTimeForPreviousOperation();
+    file << ", " << StreamCompaction::Thrust::timer().getGpuElapsedTimeForPreviousOperation();
+    file << "\n";
+    file.close();
+#endif // PROFILE_LOGS
 
 #if !ONLY_EFFECTIVE_SCAN
     printf("\n");
